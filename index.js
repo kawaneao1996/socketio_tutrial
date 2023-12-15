@@ -26,8 +26,8 @@ await db.exec(`
 const app = express();
 const server = createServer(app);
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const io = new Server(server,{
-  connectionStateRecovery:{}
+const io = new Server(server, {
+  connectionStateRecovery: {}
 });
 
 app.get('/', (req, res) => {
@@ -44,7 +44,7 @@ io.on('connection', (socket) => {
   });
 });
 
-io.on('connection', (socket) => {
+io.on('connection', async (socket) => {
   socket.on('chat message', async (msg) => {
     let result;
     try {
@@ -57,7 +57,22 @@ io.on('connection', (socket) => {
     // include the offset with the message
     io.emit('chat message', msg, result.lastID);
   });
+
+  if (!socket.recovered) {
+    // if the connection state recovery was not successful
+    try {
+      await db.each('SELECT id, content FROM messages WHERE id > ?',
+        [socket.handshake.auth.serverOffset || 0],
+        (_err, row) => {
+          socket.emit('chat message', row.content, row.id);
+        }
+      )
+    } catch (e) {
+      // something went wrong
+    }
+  }
 });
+
 
 server.listen(3000, () => {
   console.log('server running at http: //localhost:3000');
